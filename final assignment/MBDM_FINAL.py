@@ -5,12 +5,13 @@
 # 
 # This notebook contains the final code of Group 22's assignment for the course EPA1361.
 # 
-# In this code, we explore scenarios for the studied policy problem (flood risk management for the IJssel river) using open exploration, and then apply directed search (MORDM) to find optimal results.
+# In this code, we explore scenarios for the studied policy problem (flood risk management for the IJssel river) 
+# using open exploration, and then apply directed search (MORDM) to find optimal results.
 # 
-# ## Table of contents
+# # # Table of contents
 # 1. [Exploration](#Exploration)
-#     1. [Problem formulation 3](#Problem-formulation-3)
-#     2. [Problem formulation 4](#Problem-formulation-4)
+#     1. [Problem formulation 2](#Problem-formulation-2)
+#     2. [Problem formulation 3](#Problem-formulation-3)
 # 2. [Optimization](#Optimization)
 #     1. [Convergence](#Convergence)
 #     2. [Constraints and solutions](#Constraints-and-solutions)
@@ -21,35 +22,22 @@
 # 
 # _The items in this table of contents may only be clickable in the browser version of Jupyter Notebook._
 
-# In[ ]:
-
-
-# Settings
-save_exploration_data = False
-save_figures = True
-save_hv_data = False
-save_result_data = True
-
-
-# In[2]:
-
-
 # All needed imports
-## Standard packages
+# # Standard packages
 import pandas as pd
-import matplotlib
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn as sns
-import copy
+from copy import deepcopy
 from pathlib import Path
 import shutil
 from datetime import datetime
 import json
 import numpy as np
 import collections
-## EMA workbench!
+
+# # EMA workbench!
 from ema_workbench import (
-    Model,
     Policy,
     Scenario,
     MultiprocessingEvaluator,
@@ -58,9 +46,9 @@ from ema_workbench import (
     ema_logging,
     save_results
 )
-## EMA workbench - optimization
+# EMA workbench - optimization
 from ema_workbench.em_framework.optimization import (ArchiveLogger, EpsilonProgress, to_problem)
-## EMA workbench - analysis
+# # EMA workbench - analysis
 from ema_workbench.analysis import (
     parcoords,
     prim,
@@ -68,19 +56,21 @@ from ema_workbench.analysis import (
     feature_scoring,
     scenario_discovery_util
 )
-## IJssel dike model
+# # IJssel dike model
 from problem_formulation import get_model_for_problem_formulation
-
 
 if __name__ == '__main__':
 
-    # In[3]:
-
+    # Settings
+    save_exploration_data = False
+    save_figures = True
+    save_hv_data = False
+    save_result_data = True
 
     # Set up
-    ## Set up logging
+    # # Set up logging
     ema_logging.log_to_stderr(ema_logging.INFO)
-    ## Set up folders
+    # # Set up folders
     if save_exploration_data:
         exploration_data_path = "./MBDM_Final_Data/Exploration_Data"
         Path(exploration_data_path).mkdir(parents=True, exist_ok=True)
@@ -91,19 +81,15 @@ if __name__ == '__main__':
         figures_path = "./MBDM_Final_Data/Figures"
         Path(figures_path).mkdir(parents=True, exist_ok=True)
 
-
-    # ## Exploration
-    # 
-    # We will explore five policies:
-    # 
+    # # # Exploration
+    #
+    # We will explore four policies:
+    #
     # 1. a baseline (no actions taken)
     # 2. implementing room for the river (RfR) everywhere
     # 3. heightening all dikes by 50cm in every timestep
-    # 4. RfR only near Natura 2000 areas (dike rings 1 and 2), dike heightening of 50 cm in timestep 3 in the other dike rings
-    # 5. the final policy of the MBDM debate, including RfR in dike rings 1 and 4, and moderate dike heightening in each dike ring
-
-    # In[4]:
-
+    # 4. the final policy of the MBDM debate, including RfR in dike rings 1 and 4,
+    #    and moderate dike heightening in each dike ring
 
     # In the two problem formulations we want to explore, the levers are the same.
     # This function will return the policy list, based on the default values of a problem formulation.
@@ -112,230 +98,151 @@ if __name__ == '__main__':
         return [
             Policy("Baseline", **do_nothing_dict),
             Policy("RfR everywhere",
-                **dict(
-                    do_nothing_dict,
-                    **{'0_RfR 0':1,
-                        '0_RfR 1':1,
-                        '0_RfR 2':1,
-                        '1_RfR 0':1,
-                        '1_RfR 1':1,
-                        '1_RfR 2':1,
-                        '2_RfR 0':1,
-                        '2_RfR 1':1,
-                        '2_RfR 2':1,
-                        '3_RfR 0':1,
-                        '3_RfR 1':1,
-                        '3_RfR 2':1,
-                        '4_RfR 0':1,
-                        '4_RfR 1':1,
-                        '4_RfR 2':1
-                    }
-                )
-            ),
+                   **dict(
+                       do_nothing_dict,
+                       **{'0_RfR 0': 1,
+                          '0_RfR 1': 1,
+                          '0_RfR 2': 1,
+                          '1_RfR 0': 1,
+                          '1_RfR 1': 1,
+                          '1_RfR 2': 1,
+                          '2_RfR 0': 1,
+                          '2_RfR 1': 1,
+                          '2_RfR 2': 1,
+                          '3_RfR 0': 1,
+                          '3_RfR 1': 1,
+                          '3_RfR 2': 1,
+                          '4_RfR 0': 1,
+                          '4_RfR 1': 1,
+                          '4_RfR 2': 1
+                          }
+                   )
+                   ),
             Policy("Dike heightening everywhere",
-                **dict(
-                    do_nothing_dict,
-                    **{'A.1_DikeIncrease 0':5,
-                        'A.1_DikeIncrease 1':5,
-                        'A.1_DikeIncrease 2':5,
-                        'A.2_DikeIncrease 0':5,
-                        'A.2_DikeIncrease 1':5,
-                        'A.2_DikeIncrease 2':5,
-                        'A.3_DikeIncrease 0':5,
-                        'A.3_DikeIncrease 1':5,
-                        'A.3_DikeIncrease 2':5,
-                        'A.4_DikeIncrease 0':5,
-                        'A.4_DikeIncrease 1':5,
-                        'A.4_DikeIncrease 2':5,
-                        'A.5_DikeIncrease 0':5,
-                        'A.5_DikeIncrease 1':5,
-                        'A.5_DikeIncrease 2':5
-                    }
-                )
-            ),
-            # Dike heightening occurs only in the last timesteps.
-            Policy("RfR in Natura 2000 areas",
-                **dict(
-                    do_nothing_dict,
-                    **{'0_RfR 0':1,
-                    '1_RfR 0':1,
-                    'A.3_DikeIncrease 0': 0,
-                    'A.3_DikeIncrease 1': 0,
-                    'A.3_DikeIncrease 2': 5,
-                    'A.4_DikeIncrease 0': 0,
-                    'A.4_DikeIncrease 1': 0,
-                    'A.4_DikeIncrease 2': 5,
-                    'A.5_DikeIncrease 0': 0,
-                    'A.5_DikeIncrease 1': 0,
-                    'A.5_DikeIncrease 2': 5
-                    }
-                )
-            ),
+                   **dict(
+                       do_nothing_dict,
+                       **{'A.1_DikeIncrease 0': 5,
+                          'A.1_DikeIncrease 1': 5,
+                          'A.1_DikeIncrease 2': 5,
+                          'A.2_DikeIncrease 0': 5,
+                          'A.2_DikeIncrease 1': 5,
+                          'A.2_DikeIncrease 2': 5,
+                          'A.3_DikeIncrease 0': 5,
+                          'A.3_DikeIncrease 1': 5,
+                          'A.3_DikeIncrease 2': 5,
+                          'A.4_DikeIncrease 0': 5,
+                          'A.4_DikeIncrease 1': 5,
+                          'A.4_DikeIncrease 2': 5,
+                          'A.5_DikeIncrease 0': 5,
+                          'A.5_DikeIncrease 1': 5,
+                          'A.5_DikeIncrease 2': 5
+                          }
+                   )
+                   ),
             # Policy agreed upon by majority of actors during the debate
             Policy("Final approved policy",
-                **dict(
-                    do_nothing_dict,
-                    **{'0_RfR 0': 1,
-                    'A.1_DikeIncrease 1': 3,
-                    'A.2_DikeIncrease 0': 3,
-                    'A.3_DikeIncrease 0': 10,
-                    '3_RfR 0': 1,
-                    'A.4_DikeIncrease 1': 3,
-                    'A.5_DikeIncrease 0': 10
-                    }
-                )
-            ),
+                   **dict(
+                       do_nothing_dict,
+                       **{'0_RfR 0': 1,
+                          'A.1_DikeIncrease 1': 3,
+                          'A.2_DikeIncrease 0': 3,
+                          'A.3_DikeIncrease 0': 10,
+                          '3_RfR 0': 1,
+                          'A.4_DikeIncrease 1': 3,
+                          'A.5_DikeIncrease 0': 10
+                          }
+                   )
+                   ),
         ]
 
-    # The code for the two studied problem formulations could also be simplfied into a loop, but it is convenient to keep them separate if steps or parameters need to be changed for one of the two.
 
+    # The code for the two studied problem formulations could also be simplfied into a loop, but it is convenient 
+    # to keep them separate if steps or parameters need to be changed for one of the two.
 
-    # ### Problem formulation 3
+    # # # # Problem formulation 2
 
-    # In[5]:
-
-
-    ## Get the model
+    # # Get the model
     dike_model, planning_steps = get_model_for_problem_formulation(2)
 
-    ## Function to get default values for all levers
+    # # Function to get default values for all levers
     def get_do_nothing_dict():
-        return {l.name: 0 for l in dike_model.levers}
+        return {lever.name: 0 for lever in dike_model.levers}
 
-
-    # In[6]:
-
-
-    ## Define policies to explore
+    # # Define policies to explore
     policies = get_policies(get_do_nothing_dict())
-
-
-    # In[7]:
-
 
     # Run the model with the EMA workbench
     n_scenarios = 200
     with MultiprocessingEvaluator(dike_model) as evaluator:
         results = evaluator.perform_experiments(n_scenarios, policies)
 
+    # Save exploration results if needed
+    if save_exploration_data:
+        save_results(results, exploration_data_path + '/exploration_PF2_results.tar.gz')
 
-    # In[8]:
+    # Separate results into experiments and outcomes, and select policies
+    experiments, outcomes = results
+    policies = experiments['policy']
 
+    # Convert outcomes into a dataframe to plot
+    data = pd.DataFrame.from_dict(outcomes)
+    data['policy'] = policies
+
+    # Plot results
+    sns.pairplot(data, hue='policy', vars=outcomes.keys(), )
+    if save_figures:
+        plt.savefig(figures_path + "/exploration_PF2_policies.png", dpi=300)
+
+    # # # # Problem formulation 3
+
+    # # Get the model
+    dike_model, planning_steps = get_model_for_problem_formulation(3)
+
+    # # Function to get default values for all levers
+    def get_do_nothing_dict():
+        return {lever.name: 0 for lever in dike_model.levers}
+
+    # # Define policies to explore
+    policies = get_policies(get_do_nothing_dict())
+
+    # Run the model with the EMA workbench
+    n_scenarios = 200
+    with MultiprocessingEvaluator(dike_model) as evaluator:
+        results = evaluator.perform_experiments(n_scenarios, policies)
 
     # Save exploration results if needed
     if save_exploration_data:
         save_results(results, exploration_data_path + '/exploration_PF3_results.tar.gz')
 
-
-    # In[9]:
-
-
     # Separate results into experiments and outcomes, and select policies
     experiments, outcomes = results
     policies = experiments['policy']
 
-
-    # In[10]:
-
-
     # Convert outcomes into a dataframe to plot
     data = pd.DataFrame.from_dict(outcomes)
     data['policy'] = policies
-
-
-    # In[11]:
-
 
     # Plot results
     sns.pairplot(data, hue='policy', vars=outcomes.keys(), )
     if save_figures:
         plt.savefig(figures_path + "/exploration_PF3_policies.png", dpi=300)
-    #plt.show()
 
-
-    # ### Problem formulation 4
-
-    # In[12]:
-
-
-    ## Get the model
-    dike_model, planning_steps = get_model_for_problem_formulation(3)
-
-    ## Function to get default values for all levers
-    def get_do_nothing_dict():
-        return {l.name: 0 for l in dike_model.levers}
-
-
-    # In[13]:
-
-
-    ## Define policies to explore
-    policies = get_policies(get_do_nothing_dict())
-
-
-    # In[14]:
-
-
-    # Run the model with the EMA workbench
-    n_scenarios = 200
-    with MultiprocessingEvaluator(dike_model) as evaluator:
-        results = evaluator.perform_experiments(n_scenarios, policies)
-
-
-    # In[15]:
-
-
-    # Save exploration results if needed
-    if save_exploration_data:
-        save_results(results, exploration_data_path + '/exploration_PF4_results.tar.gz')
-
-
-    # In[16]:
-
-
-    # Separate results into experiments and outcomes, and select policies
-    experiments, outcomes = results
-    policies = experiments['policy']
-
-
-    # In[17]:
-
-
-    # Convert outcomes into a dataframe to plot
-    data = pd.DataFrame.from_dict(outcomes)
-    data['policy'] = policies
-
-
-    # In[18]:
-
-
-    # Plot results
-    sns.pairplot(data, hue='policy', vars=outcomes.keys(), )
-    if save_figures:
-        plt.savefig(figures_path + "/exploration_PF4_policies.png", dpi=300)
-    #plt.show()
-
-
-    # ## Optimization
-
-    # In[ ]:
-
+    # # # Optimization
 
     # Optimization settings
     convergence_metrics = [EpsilonProgress()]
-    epsilon = [0.5,0.5,0.5,0.01,0.01]
-    ## NFE
+    epsilon = [0.5, 0.5, 0.5, 0.01, 0.01]
+    # # NFE
     nfe = 15000
-    hv_max_nfe = 15000 # Hypervolume is very resource-intensive to run. Its convergence can be clearly seen above 10000 function evaluations, and so we do not run hypervolume if the chosen nfe is above a certain limit.
+    hv_max_nfe = 15000
     run_hv = nfe <= hv_max_nfe
-
+    # Hypervolume is very resource-intensive to run. Its convergence can be clearly seen above 10000 function
+    # evaluations, and so we do not run hypervolume if the chosen nfe is above a certain limit.
 
     # _Each epsilon value corresponds to a model outcome.
     # The model outcomes are: expected damages, dike investment costs, rfr costs, evacuation cost, and casualties.
-    # We select higher epsilon values to damages and costs, while we choose lower values for evacuation costs and casualties._
-
-    # In[20]:
-
+    # We select higher epsilon values to damages and costs, while we choose lower values for evacuation costs and
+    # casualties.
 
     # Get the model
     dike_model, planning_steps = get_model_for_problem_formulation(2)
@@ -370,48 +277,42 @@ if __name__ == '__main__':
     if tmppath.exists() and tmppath.is_dir():
         shutil.rmtree(tmppath)
 
-
-    # In[21]:
-
-
     # Set convergence metrics
     mordm_data_filename = "MORDM_HV_1.tar.gz"
     convergence_metrics = [
         # Save data as archive, for hypervolume
         ArchiveLogger(
             optimization_data_path,
-            [l.name for l in dike_model.levers],
-            [o.name for o in dike_model.outcomes],
+            [lever.name for lever in dike_model.levers],
+            [outcome.name for outcome in dike_model.outcomes],
             base_filename=mordm_data_filename,
         ),
         # Track epsilon progress
         EpsilonProgress(),
     ]
 
-
-    # In[22]:
-
-
     # Run optimization
     with MultiprocessingEvaluator(dike_model) as evaluator:
-        optimization_result, optimization_convergence = evaluator.optimize(nfe=nfe, searchover='levers', epsilons=epsilon, convergence=convergence_metrics,reference=reference_scenario)
+        optimization_result, optimization_convergence = evaluator.optimize(nfe=nfe, searchover='levers',
+                                                                           epsilons=epsilon,
+                                                                           convergence=convergence_metrics,
+                                                                           reference=reference_scenario)
 
-    optimization_result
+    # # # # Convergence
+    #
+    # Convergence is used as the preferred metric to ensure that within the space of possible policies,
+    # a robust set is selected. There are several ways of measuring it, including epsilon progress and hypervolume.
+    # The following cells include the additional process required to calculate the hypervolume.
+    # Given that it is very resource-intensive to run, and that convergence can be seen above 10000 function
+    # evaluations, we do not run hypervolume if the chosen nfe is above a certain limit.
 
-
-    # ### Convergence
-    # 
-    # Hypervolume is very resource-intensive to run. Its convergence can be clearly seen above 10000 function evaluations, and so we do not run hypervolume if the chosen nfe is above a certain limit.
-
-    # #### Sanitize data
-    # Here, there is an issue between the dike model and the EMA Workbench. The dike model defines value keys (levers, uncertainties, outcomes) that do not follow Python identifier standards, by including spaces or dots, or starting with digits.
-    # 
-    # We avoid this by replacing disallowed symbols with allowed (but otherwise unused) symbols, Ç and Ñ. We also add the letter "A" in front of keys starting with digits.
-
-    # In[23]:
-
-
-    from copy import deepcopy
+    # ### # Sanitize data
+    # Here, there is an issue between the dike model and the EMA Workbench.
+    # The dike model defines value keys (levers, uncertainties, outcomes) that do not follow Python identifier
+    # standards, by including spaces or dots, or starting with digits.
+    #
+    # We avoid this by replacing disallowed symbols with allowed (but otherwise unused) symbols, Ç and Ñ.
+    # We also add the letter "A" in front of keys starting with digits.
 
     result_sanitized = optimization_result.copy()
     model_sanitized = deepcopy(dike_model)
@@ -419,22 +320,22 @@ if __name__ == '__main__':
     # Here, we need to rename...
     def sanitize_as_python_identifier(x):
         # Replace dots
-        x = x.replace(".","Ç")
+        x = x.replace(".", "Ç")
         # Replace spaces
-        x = x.replace(" ","Ñ")
+        x = x.replace(" ", "Ñ")
         # Add letter if starts with digit
-        if x.startswith(("0","1","2","3","4","5")):
+        if x.startswith(("0", "1", "2", "3", "4", "5")):
             x = "A" + x
         return x
 
     # Reverse functions for if we need to get the original labels...
     def desanitize_as_python_identifier(x):
         # Replace dots
-        x = x.replace("Ç",".")
+        x = x.replace("Ç", ".")
         # Replace spaces
-        x = x.replace("Ñ"," ")
+        x = x.replace("Ñ", " ")
         # Add letter if starts with digit
-        if x.startswith(("A0","A1","A2","A3","A4","A5")):
+        if x.startswith(("A0", "A1", "A2", "A3", "A4", "A5")):
             x = x[1:]
         return x
 
@@ -448,10 +349,6 @@ if __name__ == '__main__':
 
     for out in model_sanitized.outcomes:
         out.name = sanitize_as_python_identifier(out.name)
-
-
-    # In[24]:
-
 
     # Hypervolume
     if run_hv:
@@ -467,7 +364,8 @@ if __name__ == '__main__':
 
         # As this is a very slow process, we want to store the results at every step if something goes wrong
         if save_hv_data:
-            hypervolume_folder = optimization_data_path + f"/Hypervolume_Data/hv_{str(round(datetime.now().timestamp()))}"
+            hypervolume_folder = \
+                optimization_data_path + f"/Hypervolume_Data/hv_{str(round(datetime.now().timestamp()))}"
             Path(hypervolume_folder).mkdir(parents=True, exist_ok=True)
 
         for i, (nfe, archive) in enumerate(archives.items()):
@@ -488,17 +386,13 @@ if __name__ == '__main__':
                 print(datetime.now().strftime('%H:%M:%S') + " - Dumped hv data into file " + filename)
             # may be read with open("test", "r") - not implemented
 
-        hypervolume.sort(key=lambda x:x[0])
+        hypervolume.sort(key=lambda x: x[0])
         hypervolume = np.asarray(hypervolume)
-
-
-    # In[25]:
-
 
     # Plot convergence metrics
     if run_hv:
         # Plot both
-        fig, (ax1, ax2) = plt.subplots(ncols=2, sharex=True, figsize=(8,4))
+        fig, (ax1, ax2) = plt.subplots(ncols=2, sharex=True, figsize=(8, 4))
         ax1.plot(optimization_convergence.nfe, optimization_convergence.epsilon_progress)
         ax1.set_ylabel('$\epsilon$ progress')
         ax2.plot(hypervolume[:, 0], hypervolume[:, 1])
@@ -507,8 +401,8 @@ if __name__ == '__main__':
         ax1.set_xlabel('number of function evaluations')
         ax2.set_xlabel('number of function evaluations')
         if save_figures:
-            plt.savefig(figures_path + f"/mordm_convergence_{nfe}.png", dpi=300)
-        #plt.show()
+            plt.savefig(figures_path + f"/mordm_convergence_hv.png", dpi=300)
+        # plt.show()
     else:
         # Plot only epsilon
         fig, ax = plt.subplots()
@@ -516,14 +410,11 @@ if __name__ == '__main__':
         ax.set_ylabel('$\epsilon$ progress')
         ax.set_xlabel('number of function evaluations')
         if save_figures:
-            plt.savefig(figures_path + f"/mordm_convergence_{nfe}.png", dpi=300)
-        #plt.show()
+            plt.savefig(figures_path + f"/mordm_convergence.png", dpi=300)
+        # plt.show()
 
-
-    # ### Constraints and solutions
-
-    # In[26]:
-
+    # # # # Constraints and solutions
+    # The graph shows the selected solutions from the first step of MORDM.
 
     # Plot initial pool of solutions
     outcome_data = optimization_result.loc[:, [o.name for o in dike_model.outcomes]]
@@ -531,26 +422,20 @@ if __name__ == '__main__':
 
     paraxes = parcoords.ParallelAxes(outcome_limits)
     paraxes.plot(outcome_data)
-    plt.title("All scenarios")
+    # plt.title("All scenarios")
     if save_figures:
-        plt.savefig(figures_path + f"/parcoords_outcomes_{nfe}.png", dpi=300)
-    #plt.show()
+        plt.savefig(figures_path + f"/parcoords_outcomes.png", dpi=300)
 
-
-    # These found solutions will now be constrained to the most for the Delta Commission. For a solution to be allowable, the following criteria must be met:
-    # 
+    # These found solutions will now be constrained to the most for the Delta Commission.
+    # For a solution to be allowable, the following criteria must be met:
+    #
     # * Expected number of deaths should not exceed **0.001**.
-    # * **Adaptability**: follow real-life common sense in the long run. Concretely, **not executing RfR in a location where dikes have been previously heightened**, thus undoing the initial investment. The other way around is allowed.
-
-    # In[27]:
-
+    # * **Adaptability**: follow real-life common sense in the long run.
+    #     Concretely, **not executing RfR in a location where dikes have been previously heightened**,
+    #     thus undoing the initial investment. The other way around is allowed.
 
     # Constrain solutions by # of deaths
     optimization_result_constrained = optimization_result[optimization_result['Expected Number of Deaths'] < 0.001]
-
-
-    # In[28]:
-
 
     # Constrain solutions by excluding dike heightening -> RfR scenarios
     def has_rfr_after_dh(series):
@@ -568,22 +453,14 @@ if __name__ == '__main__':
                 return True
         return False
 
-    optimization_result_constrained = optimization_result_constrained[optimization_result_constrained.apply(has_rfr_after_dh, axis="columns") == False]
 
+    optimization_result_constrained = optimization_result_constrained[
+        optimization_result_constrained.apply(has_rfr_after_dh, axis="columns") == False]
 
-    # In[29]:
-
-
-    # Remove columns for outcomes from the dataframe, resulting in a df of polcies
+    # Remove columns for outcomes from the dataframe, resulting in a df of policies
     optimization_policies = optimization_result_constrained.drop([o.name for o in dike_model.outcomes], axis=1)
-    optimization_policies
 
-
-    # **TO-DO**: We should say something about the trade-offs that we found on the small set of solutions. For instance, sacrificing costs for lower deaths or costs for RfR as a measure of adaptability...
-    # I think here would be very interesting to say something about the model and the constraints it was of the evaluation of RfR. Only one type (although there are many), and checking the water level only in winter (which is a good thing for the transport company to have RfR because when there are droughts they cannot pass anyways)
-
-    # In[30]:
-
+    # The subset of solutions that comply with the previously defined criteria is plotted below.
 
     # Plot the constrained pool of solutions
     outcome_data_constrained = optimization_result_constrained.loc[:, [o.name for o in dike_model.outcomes]]
@@ -591,14 +468,9 @@ if __name__ == '__main__':
 
     paraxes = parcoords.ParallelAxes(outcome_limits_constrained)
     paraxes.plot(outcome_data_constrained)
-    plt.title("Constrained scenarios")
+    # plt.title("Constrained scenarios")
     if save_figures:
-        plt.savefig(figures_path + f"/parcoords_outcomes_{nfe}_constrained.png", dpi=300)
-    #plt.show()
-
-
-    # In[ ]:
-
+        plt.savefig(figures_path + f"/parcoords_outcomes_constrained.png", dpi=300)
 
     # Save data
     if save_result_data:
@@ -606,13 +478,10 @@ if __name__ == '__main__':
         optimization_result_constrained.to_csv(results_path + "/optimization_result_constrained.csv")
         optimization_policies.to_csv(results_path + "/optimization_policies.csv")
 
-
-    # ### Uncertainty
-    # 
-    # Re-evaluate candidate solutions under uncertainty. Performing experiments with 1000 scenarios for each of the policy options
-
-    # In[ ]:
-
+    # # # # Uncertainty
+    #
+    # Re-evaluate candidate solutions under uncertainty.
+    # Performing experiments with 10000 scenarios for each of the selected policy options
 
     # Build list of policies
     policies_to_evaluate = []
@@ -620,95 +489,62 @@ if __name__ == '__main__':
     for i, policy in optimization_policies.iterrows():
         policies_to_evaluate.append(Policy(str(i), **policy.to_dict()))
 
-
-    # In[ ]:
-
-
-    n_scenarios = 10000 # the amount of scenarios for each policy option
+    n_scenarios = 10000  # the amount of scenarios for each policy option
     with MultiprocessingEvaluator(dike_model) as evaluator:
         experiments, outcomes = evaluator.perform_experiments(n_scenarios, policies_to_evaluate)
 
-    experiments
-
-
-    # In[ ]:
-
-
-    outcomes
-
-
-    # ### Scenario discovery using PRIM
-
-    # In[ ]:
-
+    # # # # Scenario discovery using PRIM
+    # Because the policies are evaluated on a series of experiments, the constraint on deaths,
+    # considering safety and wellbeing are fundamental tenets of the Delta Commission mandate,
+    # is re-applied to ensure the policies behave within the defined threshold.
 
     # Clean up data = policy parameters, only leaving outcomes etc.
-    columns_to_drop = ['A.1_DikeIncrease 0','A.1_DikeIncrease 1','A.1_DikeIncrease 2','A.2_DikeIncrease 0','A.2_DikeIncrease 1','A.2_DikeIncrease 2','A.3_DikeIncrease 0','A.3_DikeIncrease 1','A.3_DikeIncrease 2','A.4_DikeIncrease 0','A.4_DikeIncrease 1','A.4_DikeIncrease 2','A.5_DikeIncrease 0','A.5_DikeIncrease 1','A.5_DikeIncrease 2', 'policy']
-    columns_to_drop += ['0_RfR 0','0_RfR 1','0_RfR 2','1_RfR 0','1_RfR 1','1_RfR 2','2_RfR 0','2_RfR 1','2_RfR 2','3_RfR 0','3_RfR 1','3_RfR 2','4_RfR 0','4_RfR 1','4_RfR 2','EWS_DaysToThreat']
+    columns_to_drop = ['A.1_DikeIncrease 0', 'A.1_DikeIncrease 1', 'A.1_DikeIncrease 2', 'A.2_DikeIncrease 0',
+                       'A.2_DikeIncrease 1', 'A.2_DikeIncrease 2', 'A.3_DikeIncrease 0', 'A.3_DikeIncrease 1',
+                       'A.3_DikeIncrease 2', 'A.4_DikeIncrease 0', 'A.4_DikeIncrease 1', 'A.4_DikeIncrease 2',
+                       'A.5_DikeIncrease 0', 'A.5_DikeIncrease 1', 'A.5_DikeIncrease 2', 'policy']
+    columns_to_drop += ['0_RfR 0', '0_RfR 1', '0_RfR 2', '1_RfR 0', '1_RfR 1', '1_RfR 2', '2_RfR 0', '2_RfR 1',
+                        '2_RfR 2',
+                        '3_RfR 0', '3_RfR 1', '3_RfR 2', '4_RfR 0', '4_RfR 1', '4_RfR 2', 'EWS_DaysToThreat']
 
     cleaned_experiments = experiments.copy()
     cleaned_experiments.drop(columns_to_drop, axis=1, inplace=True)
 
-
-    # In[ ]:
-
-
     # Apply PRIM
     x = cleaned_experiments
-    y = (outcomes['Expected Number of Deaths'] <= 0.001) # the outcome constraint to evaluate using PRIM
-    prim_alg = prim.Prim(x,y, threshold = 0.5, peel_alpha = 0.01)
+    y = (outcomes['Expected Number of Deaths'] <= 0.001)  # the outcome constraint to evaluate using PRIM
+    prim_alg = prim.Prim(x, y, threshold=0.5, peel_alpha=0.01)
     box = prim_alg.find_box()
-
-
-    # In[ ]:
-
 
     # Plot PRIM tradeoff graph
     box.show_tradeoff(annotated=True)
-    #plt.show()
 
     if save_figures:
         box.show_tradeoff(annotated=False)
         plt.savefig(figures_path + f"/prim_tradeoff.png", dpi=300)
-
-
-    # **TO-DO**: here we have to talk about the trade-offs between density and coverage.
-
-    # In[ ]:
-
 
     # Inspect PRIM results in graph style
     box.inspect(style='graph')
     if save_figures:
         plt.tight_layout()
         plt.savefig(figures_path + f"/prim_inspect_graph.png", dpi=300)
-    #plt.show()
 
+    # The coverage found is quite low, and in general, PRIM struggles to explain the problem
+    # without restricting a significant number of dimensions. Because PRIM is not the best approach to identify
+    # critical uncertainties in nonlinear problems such as this model, we proceed with dimensional stacking
+    # to visualize the interactions of the different variables of the model.
 
-    # **TO-DO**: rewrite these PRIM conclusions a bit
-    # 
-    # Bmax is not relevant for deaths. High pfail is correlated with higher deaths.
-    # This only cover 16% of the cases of interests with a density of 1. It is not very conclusive, PRIM had issues explaining the problem without restricting a significant number of dimensions (in the case of this image but once we run the final probably that changes)
-    # PRIM will always suffer a bit because the problem is not linear.
-
-    # #### Dimensional stacking
-    # 
-    # As PRIM is not suited to this problem, we now use dimensional stacking to see if we can conclude something else.
-
-    # In[ ]:
-
+    # # # # Dimensional stacking
+    #
 
     dimensional_stacking.create_pivot_plot(cleaned_experiments, y)
-    # Blank spaces mean that additional runs are needed for the coverage to increase and get conclusive results. However, as will be discussed, we find that this method is not suited to this problem, and thus we do not do that now.
+    # Blank spaces mean that additional runs are needed for the coverage to increase and get conclusive results.
+    # However, as will be discussed, we find that this method is not suited to this problem, and thus we do not
+    # do that now.
     if save_figures:
         plt.savefig(figures_path + f"/dimensional_stacking_pivot.png", dpi=300)
-    #plt.show()
-
 
     # We will choose a point in the lower 25% (around 0.7 density and 0.7 coverage) to inspect.
-
-    # In[ ]:
-
 
     point = 36
     box.inspect(point)
@@ -716,14 +552,8 @@ if __name__ == '__main__':
     if save_figures:
         plt.tight_layout()
         plt.savefig(figures_path + f"/dimensional_stacking_inspect_graph_{point}.png", dpi=300)
-    #plt.show()
 
-
-    # Again this is not conclusive, except to say that pfail is importaint but not that one on dike ring 3. (**TO-DO**: rewrite sentence)
     # We will resample another point in the upper 75%.
-
-    # In[ ]:
-
 
     try:
         # Issue: data is not the same every run, sometimes the point does not exist
@@ -732,37 +562,28 @@ if __name__ == '__main__':
         print("Resample failed with exception: " + str(e))
         print("You can try to run this cell again.")
 
-
-    # In[ ]:
-
-
     # Scatter plot to visually understand the PRIM process
-    i = min(140,len(box.box_lims) - 1) # limit to maximum. To-do: choose which value to use instead of 140.
+    i = min(140, len(box.box_lims) - 1)  # limit to maximum.
 
     box.select(i)
     box.show_pairs_scatter()
     fig = plt.gcf()
-    fig.set_size_inches(12,12)
+    fig.set_size_inches(12, 12)
     if save_figures:
         plt.savefig(figures_path + f"/prim_box_scatter.png", dpi=300)
-    #plt.show()
 
-
-    # ### Sensitivity analysis using extra trees
-    # 
-    # Extra trees is less computationally intensive. We will use the feature score to understand which of the uncertain values have the highest effect on the outcomes of the model.
-    # 
-
-    # In[ ]:
-
+    # # # # Sensitivity analysis using extra trees
+    #
+    # Because scenario discovery was not conclusive (due to the complexities of the problem at hand),
+    # we move forward with extra trees as the selected method for the sensitivity analysis.
+    #
+    # The choice between ET and Sobol comes down to a matter of computational requirements.
+    # Although Sobol is the best method, ET has proven to accurately estimate Sobol's indices with less computational
+    # power. Thus, we will use the feature score to understand which of the uncertain values have the highest effect
+    # on the outcomes of the model.
 
     # Use the outcome expected number of deaths as prime indicator
     outcomes_deaths = outcomes['Expected Number of Deaths']
-    outcomes_deaths
-
-
-    # In[ ]:
-
 
     # Calculate scores
     scores = feature_scoring.get_ex_feature_scores(
@@ -772,70 +593,53 @@ if __name__ == '__main__':
         mode=scenario_discovery_util.RuleInductionType.REGRESSION
     )[0]
 
-    scores
-
-
-    # In[ ]:
-
-
     # Combined scores
     combined_scores = []
-    max = cleaned_experiments.shape[0]
-    step = int(max/100)
-    for j in range(step, max, step):
+    experiments_count = cleaned_experiments.shape[0]
+    step = int(experiments_count / 100)
+    for j in range(step, experiments_count, step):
         scores = feature_scoring.get_ex_feature_scores(cleaned_experiments.iloc[0:j, :],
-                                                    outcomes_deaths[0:j],
-                                                    max_features=0.6,
-                                                    mode=scenario_discovery_util.RuleInductionType.REGRESSION)[0]
+                                                       outcomes_deaths[0:j],
+                                                       max_features=0.6,
+                                                       mode=scenario_discovery_util.RuleInductionType.REGRESSION)[0]
         scores.columns = [j]
         combined_scores.append(scores)
 
     combined_scores = pd.concat(combined_scores, axis=1, sort=True)
 
-
-    # In[ ]:
-
-
     # Save data
     if save_result_data:
         combined_scores.to_csv(results_path + "/extratrees_combined_scores.csv")
 
-
-    # In[ ]:
-
-
     fig, ax = plt.subplots(1)
     combined_scores.T.plot(ax=ax, colormap="tab20")
-    ax.legend(bbox_to_anchor=(1,1))
+    ax.legend(bbox_to_anchor=(1, 1))
     ax.set_xlabel('Samples')
     ax.set_ylabel('Feature scores')
     if save_figures:
         plt.tight_layout()
         plt.savefig(figures_path + f"/extratrees_scores.png", dpi=300)
-    #plt.show()
 
+    # # # # Robustness
+    #
+    # The last step in the MORDM optimisation process is the evaluation of robustness of the selected policies.
+    # We decided on signal-to-noise ratio and maximum regret, as complimentary measures. This is especially true
+    # since not all the outcomes have the same robustness requirements.
 
-    # ### Robustness
-    # 
-    # Two robustness metrics will be studied.
-
-    # #### Signal-to-noise ratio
-
-    # In[ ]:
-
+    # ### # Signal-to-noise ratio
+    # Given that we want to minimize deaths, costs and damages, a low signal-to-noise ratio is preferred.
+    # This metric is best for deaths, for instance, as there is a hard constraint on the value that we want to
+    # achieve and a small tolerance for deviation is allowed.
 
     # Function defined as in assignment 9.
-    def s_to_n(data, direction):
-        mean = np.mean(data)
-        std = np.std(data)
+    def s_to_n(the_data, direction):
+        mean = np.mean(the_data)
+        std = np.std(the_data)
 
-        if direction==ScalarOutcome.MAXIMIZE:
-            return mean/std
+        if direction == ScalarOutcome.MAXIMIZE:
+            return mean / std
         else:
-            return mean*std
-
-
-    # In[ ]:
+            return mean * std
 
 
     overall_scores = {}
@@ -853,11 +657,6 @@ if __name__ == '__main__':
         overall_scores[policy] = scores
 
     scores = pd.DataFrame.from_dict(overall_scores).T
-    scores
-
-
-    # In[ ]:
-
 
     # Plot the pool of scores
     score_data = scores
@@ -865,31 +664,22 @@ if __name__ == '__main__':
 
     paraxes = parcoords.ParallelAxes(score_limits)
     paraxes.plot(score_data)
-    plt.title("Signal-to-noise ratio scores")
+    # plt.title("Signal-to-noise ratio scores")
     if save_figures:
         plt.savefig(figures_path + f"/parcoords_sn.png", dpi=300)
-    #plt.show()
-
-
-    # In[ ]:
-
 
     # Save data
     if save_result_data:
         scores.to_csv(results_path + "/sn_scores.csv")
 
-
-    # #### Maximum regret
-
-    # In[ ]:
-
+    # # # # Maximum regret
+    # We aim for lowest maximum regret in all the outcomes.
+    # However, aiming for a balanced policy that includes both RfR and Dike heightening implies looking for a policy
+    # that has an acceptable maximum regret for these two outcomes.
 
     # Code as in model answer for assignment 9
-    def calculate_regret(data, best):
-        return np.abs(best-data)
-
-
-    # In[ ]:
+    def calculate_regret(the_data, best):
+        return np.abs(best - the_data)
 
 
     overall_regret = {}
@@ -917,26 +707,19 @@ if __name__ == '__main__':
         overall_regret[outcome.name] = outcome_regret
         max_regret[outcome.name] = outcome_regret.max()
 
-
-    # In[ ]:
-
-
     # Create heatmap
     max_regret_df = pd.DataFrame(max_regret)
     plt.figure()
-    sns.heatmap(max_regret_df/max_regret_df.max(), cmap='viridis', annot=True)
+    sns.heatmap(max_regret_df / max_regret_df.max(), cmap='viridis', annot=True)
     if save_figures:
+        plt.tight_layout()
         plt.savefig(figures_path + f"/maxregret_heatmap.png", dpi=300)
-    #plt.show()
-
-
-    # In[ ]:
-
 
     # Helper function to get unique color map values
-    def get_cmap_color(cmap, value, max):
-        cmap = matplotlib.colormaps[cmap]
-        return cmap(value/max)
+    def get_cmap_color(cmap, the_value, the_max):
+        cmap = mpl.colormaps[cmap]
+        return cmap(the_value / the_max)
+
 
     # Plot parcoords
     data = max_regret_df
@@ -948,25 +731,16 @@ if __name__ == '__main__':
     paraxes.legend()
     if save_figures:
         plt.savefig(figures_path + f"/maxregret_parcoords.png", dpi=300)
-    #plt.show()
-
-
-    # In[ ]:
-
 
     policy_regret = collections.defaultdict(dict)
     for key, value in overall_regret.items():
         for policy in value:
             policy_regret[policy][key] = value[policy]
 
-
-    # In[ ]:
-
-
     # this generates 2 plots with a shared y and x axis
     fig, axes = plt.subplots(
         ncols=2,
-        figsize=(10,5),
+        figsize=(10, 5),
         sharey=True,
         sharex=True
     )
@@ -980,7 +754,7 @@ if __name__ == '__main__':
 
         # We need to scale the regret to ensure fair visual
         # comparison. We can do that by dividing by the maximum regret
-        data = data/max_regret_df.max(axis=0)
+        data = data / max_regret_df.max(axis=0)
         sns.boxplot(data=data, ax=ax)
 
         # removes top and left hand black outline of axes
@@ -990,13 +764,7 @@ if __name__ == '__main__':
         ax.set_title(str(policy))
     if save_figures:
         plt.savefig(figures_path + f"/maxregret_policies.png", dpi=300)
-    #plt.show()
-
-
-    # In[ ]:
-
 
     # Save data
     if save_result_data:
         pd.DataFrame(policy_regret).to_csv(results_path + "/maxregret_policy_regret.csv")
-

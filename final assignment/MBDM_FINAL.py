@@ -923,6 +923,7 @@ if __name__ == '__main__':
 
     # Create heatmap
     max_regret_df = pd.DataFrame(max_regret)
+    plt.figure()
     sns.heatmap(max_regret_df/max_regret_df.max(), cmap='viridis', annot=True)
     if save_figures:
         plt.savefig(figures_path + f"/maxregret_heatmap.png", dpi=300)
